@@ -4,3 +4,4 @@
  * `github.com/mkb218/gosndfile/sndfile` and thus `libsndfile`
  * `github.com/rakyll/portmidi` and thus PortMIDI
  * `github.com/unixpickle/speechrecog/mfcc`
+ * Aubio

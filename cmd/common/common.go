@@ -1,7 +1,7 @@
 package common
 
 import (
-	"fevolver/midi"
+	"github.com/mkb218/fevolver/midi"
 
 	"github.com/mkb218/gosndfile/sndfile"
 )
