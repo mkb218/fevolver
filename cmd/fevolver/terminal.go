@@ -2,20 +2,20 @@ package main
 
 import (
 	"encoding/gob"
-	"fevolver/audio"
-	"fevolver/cmd/common"
-	"fevolver/midi"
 	"flag"
 	"fmt"
 	"log"
 	"math"
-	"math/rand"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/mkb218/fevolver/audio"
+	"github.com/mkb218/fevolver/cmd/common"
+	"github.com/mkb218/fevolver/midi"
 
 	"github.com/gordonklaus/portaudio"
 	"github.com/mjibson/go-dsp/fft"
@@ -33,7 +33,6 @@ import "C"
 
 func init() {
 	log.SetOutput(os.Stderr)
-	rand.Seed(time.Now().UnixNano())
 }
 
 func readInt(min, max int) (int, error) {
@@ -550,13 +549,20 @@ func native_mfcc_cosine_mono(ref_frames, device_frames []float32, sample_rate in
 	ref_samples.Slice = ref_mono
 	device_samples.Slice = device_mono
 
-	ref_options := &mfcc.Options{MelCount: 13, LowFreq: 133.33, Window: float32(len(ref_mono)) / float32(samplerate) * time.Second}
-	device_options := &mfcc.Options{MelCount: 13, LowFreq: 133.33, Window: float32(len(device_mono)) / float32(samplerate) * time.Second}
+	ref_options := &mfcc.Options{MelCount: 13, LowFreq: 133.33, Window: time.Duration(float32(len(ref_mono)) / float32(sample_rate) * float32(time.Second))}
+	device_options := &mfcc.Options{MelCount: 13, LowFreq: 133.33, Window: time.Duration(float32(len(device_mono)) / float32(sample_rate) * float32(time.Second))}
 
-	ref_mfccs := mfcc.MFCC(&ref_samples, sample_rate, options)
-	device_mfccs := mfcc.MFCC(&device_samples, sample_rate, options)
-	ref_coeffs := ref_mfccs.NextCoeffs()
-	device_coeffs := device_mfccs.NextCoeffs()
+	ref_mfccs := mfcc.MFCC(&ref_samples, sample_rate, ref_options)
+	device_mfccs := mfcc.MFCC(&device_samples, sample_rate, device_options)
+	ref_coeffs, ref_err := ref_mfccs.NextCoeffs()
+	device_coeffs, device_err := device_mfccs.NextCoeffs()
+
+	if ref_err != nil {
+		fmt.Println("error computing mfccs for reference recording", ref_err)
+	}
+	if device_err != nil {
+		fmt.Println("error computing mfccs for device recording", device_err)
+	}
 
 	// after https://reference.wolfram.com/language/ref/CosineDistance.html
 	var numerator float64

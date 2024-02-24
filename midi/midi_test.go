@@ -2,14 +2,9 @@ package midi
 
 import (
 	"fmt"
-	"math/rand"
 	"os"
 	"testing"
 )
-
-func init() {
-	rand.Seed(0)
-}
 
 func TestRandomPatch(t *testing.T) {
 	p := RandomPatch()
