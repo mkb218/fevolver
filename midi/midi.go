@@ -280,7 +280,7 @@ func envelope(addr int, in []byte) []byte {
 		byte(len(in)>>7) & 0x7f, byte(len(in) & 0x7f),
 		byte(addr >> 16), byte(addr >> 8), byte(addr)}
 	out = append(out, in...)
-	ck := (checksum(out[4:]) * -1) & 0x7f
+	ck := (int8(checksum(out[4:])) * -1) & 0x7f
 	out = append(out, byte(ck), 0xf7)
 	return out
 }

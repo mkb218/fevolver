@@ -9,3 +9,5 @@ require (
 	github.com/rakyll/portmidi v0.0.0-20201020180702-d436ceaa537a
 	github.com/unixpickle/speechrecog v0.0.0-20170624223534-26fe002aceba
 )
+
+require github.com/shanghuiyang/dtw v0.0.0-20220129062905-4e8294f27cd7 // indirect

@@ -2,20 +2,19 @@ package midi
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"os"
 	"reflect"
 	"strconv"
 )
 
-func checksum(buffers ...[]byte) int8 {
-	var sum int8
+func checksum(buffers ...[]byte) byte {
+	var sum byte
 	for _, b := range buffers {
 		for _, by := range b {
-			sum += int8(by)
+			sum += byte(by)
 		}
 	}
 	return sum & 0x7f
@@ -26,7 +25,7 @@ func FromSYXFile(filename string) (*Patch, error) {
 	if err != nil {
 		return nil, err
 	}
-	totalbuf, err := ioutil.ReadAll(f)
+	totalbuf, err := io.ReadAll(f)
 	f.Close()
 	if err != nil {
 		return nil, err
@@ -37,33 +36,33 @@ func FromSYXFile(filename string) (*Patch, error) {
 func FromByteArray(totalbuf []byte) (outp *Patch, err error) {
 	p := Patch{}
 	br := bytes.NewReader(totalbuf)
-	var msgno int
-	defer func() {
-		f, ferr := os.Create(fmt.Sprint("/Users/mkane/code/mine-go/src/fevolver/midi/msg", msgno, ".json"))
-		if ferr != nil {
-			log.Println(ferr)
-			if err == nil {
-				err = ferr
-			}
-			return
-		}
-		defer func() {
-			terr := f.Close()
-			if err == nil {
-				err = terr
-			}
-		}()
-		j := json.NewEncoder(f)
-		ferr = j.Encode(p)
-		if ferr != nil {
-			log.Println(ferr)
-			if err != nil {
-				err = ferr
-				return
-			}
-		}
+	// var msgno int
+	// defer func() {
+	// 	f, ferr := os.Create(fmt.Sprint("msg", msgno, ".json"))
+	// 	if ferr != nil {
+	// 		log.Println(ferr)
+	// 		if err == nil {
+	// 			err = ferr
+	// 		}
+	// 		return
+	// 	}
+	// 	defer func() {
+	// 		terr := f.Close()
+	// 		if err == nil {
+	// 			err = terr
+	// 		}
+	// 	}()
+	// 	j := json.NewEncoder(f)
+	// 	ferr = j.Encode(p)
+	// 	if ferr != nil {
+	// 		log.Println(ferr)
+	// 		if err != nil {
+	// 			err = ferr
+	// 			return
+	// 		}
+	// 	}
 
-	}()
+	// }()
 
 	for br.Len() > 0 {
 		header := make([]byte, 9)
@@ -129,7 +128,7 @@ func FromByteArray(totalbuf []byte) (outp *Patch, err error) {
 			if err != nil {
 				return nil, err
 			}
-			footer, err := ioutil.ReadAll(br)
+			footer, err := io.ReadAll(br)
 			if err != nil {
 				return nil, err
 			}
@@ -140,7 +139,6 @@ func FromByteArray(totalbuf []byte) (outp *Patch, err error) {
 			}
 		}
 
-		msgno++
 	}
 
 	return &p, nil
@@ -149,12 +147,12 @@ func FromByteArray(totalbuf []byte) (outp *Patch, err error) {
 
 const fseqheaderlen = 32
 
-func fseqFromBytes(reader *bytes.Reader, fseq *FSEQ) (checksum int8, err error) {
+func fseqFromBytes(reader *bytes.Reader, fseq *FSEQ) (checksum byte, err error) {
 	header := make([]byte, fseqheaderlen)
 	var n int
 	n, err = reader.Read(header)
 	for _, i := range header {
-		checksum += int8(i)
+		checksum += byte(i)
 	}
 	if n < fseqheaderlen {
 		err = fmt.Errorf("Didn't get enough bytes from FSEQ header, %d < %d", n, fseqheaderlen)
@@ -196,7 +194,7 @@ func fseqFromBytes(reader *bytes.Reader, fseq *FSEQ) (checksum int8, err error) 
 		data := make([]byte, 50)
 		n, err = reader.Read(data)
 		for _, i := range data {
-			checksum += int8(i)
+			checksum += byte(i)
 		}
 		if n < 49 {
 			err = fmt.Errorf("short read from fseq frame data frame %v got %v bytes", i, n)

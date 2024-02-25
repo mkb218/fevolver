@@ -14,9 +14,9 @@ type State struct {
 
 type ScoredPatch struct {
 	midi.Patch
-	Score float64
+	Score    float64
 	Filtered bool
-	Audio []float32
+	Audio    []float32
 }
 
 type Generation struct {

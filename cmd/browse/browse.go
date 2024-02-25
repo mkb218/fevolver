@@ -3,10 +3,10 @@ package main
 import (
 	"encoding/gob"
 	"encoding/json"
-	"github.com/mkb218/fevolver/cmd/common"
-	"github.com/mkb218/fevolver/midi"
 	"flag"
 	"fmt"
+	"github.com/mkb218/fevolver/cmd/common"
+	"github.com/mkb218/fevolver/midi"
 	"log"
 	"os"
 	"strconv"

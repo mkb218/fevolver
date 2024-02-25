@@ -18,41 +18,12 @@ import (
 	"github.com/mkb218/fevolver/midi"
 
 	"github.com/gordonklaus/portaudio"
-	"github.com/mjibson/go-dsp/fft"
 	"github.com/mkb218/gosndfile/sndfile"
 	"github.com/rakyll/portmidi"
-	"github.com/unixpickle/speechrecog/mfcc"
 )
-
-/*
-#cgo LDFLAGS: -laubio
-#include <stdlib.h>
-#include <aubio/aubio.h>
-*/
-import "C"
 
 func init() {
 	log.SetOutput(os.Stderr)
-}
-
-func readInt(min, max int) (int, error) {
-START:
-	var resp string
-	_, err := fmt.Scanf("%d", &resp)
-	if err != nil {
-		return -1, err
-	}
-	device, err := strconv.ParseInt(resp, 10, 32)
-	if err != nil {
-		fmt.Println("Your response (", resp, ") was not a number:", err)
-		goto START
-	}
-	d := int(device)
-	if d > max || d < min {
-		fmt.Println("Your response (", resp, ") was outside bounds ", min, " and ", max)
-		goto START
-	}
-	return d, nil
 }
 
 func ListMIDI(headline string) {
@@ -120,7 +91,7 @@ func read_frames(source string) (frames []float32, format sndfile.Info, err erro
 	}()
 
 	if sourcefile.Format.Channels != 2 {
-		return nil, sndfile.Info{}, fmt.Errorf("Wrong # of channels in source! 2 != %d", sourcefile.Format.Channels)
+		return nil, sndfile.Info{}, fmt.Errorf("wrong # of channels in source! 2 != %d", sourcefile.Format.Channels)
 	}
 
 	ref_frames := make([]float32, 0)
@@ -128,7 +99,7 @@ func read_frames(source string) (frames []float32, format sndfile.Info, err erro
 	for {
 		read, err := sourcefile.ReadItems(buf)
 		if err != nil {
-			return nil, sndfile.Info{}, fmt.Errorf("Couldn't read file: %v", err)
+			return nil, sndfile.Info{}, fmt.Errorf("couldn't read file: %v", err)
 		}
 		ref_frames = append(ref_frames, buf[:read]...)
 		if read == 0 {
@@ -310,10 +281,10 @@ GENERATION:
 
 func score(gen common.Generation, ref_frames []float32, format sndfile.Info, audio_dir string, midi_dev, audio_dev int, midinote, velocity int8) (err error) {
 	midistream, err := midi.OpenStream(portmidi.DeviceID(midi_dev))
-	defer midistream.Stream.Close()
 	if err != nil {
 		return err
 	}
+	defer midistream.Stream.Close()
 	noteon := []portmidi.Event{{Timestamp: 0, Status: 0x90, Data1: int64(midinote & 0x7f), Data2: int64(velocity & 0x7f)}}
 	noteoff := []portmidi.Event{{Timestamp: 0, Status: 0x80, Data1: int64(midinote & 0x7f), Data2: int64(velocity & 0x7f)}}
 	store_audio := audio_dir != ""
@@ -375,7 +346,7 @@ func score(gen common.Generation, ref_frames []float32, format sndfile.Info, aud
 		locker.Unlock()
 		complete.Wait()
 
-		score, filtered := native_mfcc_cosine_mono(ref_frames, device.Buffer, int(format.Samplerate))
+		score, filtered := audio.Native_mfcc_dtw_euclidean_mono(ref_frames, device.Buffer, int(format.Samplerate))
 		gen.Patches[i].Score = score
 		gen.Patches[i].Filtered = filtered
 		if audio_dir != "" {
@@ -398,206 +369,12 @@ func score(gen common.Generation, ref_frames []float32, format sndfile.Info, aud
 	return nil
 }
 
-func absolute_difference(ref_frames, devicebuffer []float32) float64 {
-	score := float64(0)
-	for i := range ref_frames {
-		score -= math.Abs(float64(ref_frames[i] - devicebuffer[i]))
-	}
-	return score
-}
-
-func user_rating(ref_frames, devicebuffer []float32) (score float64) {
-	for {
-		fmt.Println("Enter a score, please (0.0 - 100.0): ")
-		_, err := fmt.Scan(&score)
-		if err != nil {
-			fmt.Println("Bad input:", err)
-		}
-		if score >= 0 && score <= 100.0 {
-			return
-		}
-	}
-}
-
-func aubio_mfcc(ref_frames, devicebuffer []float32, format sndfile.Info) (score float64) {
-	// FFT first
-	ref_fft_obj := C.new_aubio_fft(C.uint(len(ref_frames)))
-	defer C.del_aubio_fft(ref_fft_obj)
-	dev_fft_obj := C.new_aubio_fft(C.uint(len(devicebuffer)))
-	defer C.del_aubio_fft(dev_fft_obj)
-
-	ref_fft_input := C.new_fvec(C.uint(len(ref_frames)))
-	defer C.del_fvec(ref_fft_input)
-	ref_fft_output := C.new_cvec(C.uint(len(ref_frames)))
-	defer C.del_cvec(ref_fft_output)
-	dev_fft_input := C.new_fvec(C.uint(len(devicebuffer)))
-	defer C.del_fvec(dev_fft_input)
-	dev_fft_output := C.new_cvec(C.uint(len(devicebuffer)))
-	defer C.del_cvec(dev_fft_output)
-
-	for i, r := range ref_frames {
-		C.fvec_set_sample(ref_fft_input, C.smpl_t(r), C.uint(i))
-	}
-	for i, r := range devicebuffer {
-		C.fvec_set_sample(ref_fft_input, C.smpl_t(r), C.uint(i))
-	}
-
-	C.aubio_fft_do(ref_fft_obj, ref_fft_input, ref_fft_output)
-	C.aubio_fft_do(dev_fft_obj, dev_fft_input, dev_fft_output)
-
-	var num_mfccs C.uint = 10
-
-	// MFCCs
-	ref_mfcc_obj := C.new_aubio_mfcc(C.uint(len(ref_frames)), num_mfccs, num_mfccs*4, C.uint(format.Samplerate))
-	defer C.del_aubio_mfcc(ref_mfcc_obj)
-	dev_mfcc_obj := C.new_aubio_mfcc(C.uint(len(devicebuffer)), num_mfccs, num_mfccs*4, C.uint(format.Samplerate))
-	defer C.del_aubio_mfcc(dev_mfcc_obj)
-
-	ref_mfcc_output := C.new_fvec(num_mfccs)
-	defer C.del_fvec(ref_mfcc_output)
-	dev_mfcc_output := C.new_fvec(num_mfccs)
-	defer C.del_fvec(dev_mfcc_output)
-
-	C.aubio_mfcc_do(ref_mfcc_obj, ref_fft_output, ref_mfcc_output)
-	C.aubio_mfcc_do(dev_mfcc_obj, dev_fft_output, dev_mfcc_output)
-
-	// euclidean distance of MFCC
-	var sum float32
-	for i := C.uint(0); i < num_mfccs; i++ {
-		diff := C.fvec_get_sample(ref_mfcc_output, i) - C.fvec_get_sample(dev_mfcc_output, i)
-		sum += float32(diff) * float32(diff)
-	}
-	return -math.Sqrt(float64(sum))
-}
-
-var score_frames = user_rating
-
 func passthrough(score float64) bool {
 	return true
 }
 
-func filter_zeroes(score float64) bool {
-	return score > 0
-}
+// func filter_zeroes(score float64) bool {
+// 	return score > 0
+// }
 
 var filter = passthrough
-
-func native_fft_euclidean_mono(ref_frames, device_frames []float32) (score float64) {
-	ref_mono := sum_channels(ref_frames)
-	device_mono := sum_channels(device_frames)
-	ref_fft := fft.FFTReal(ref_mono)
-	device_fft := fft.FFTReal(device_mono)
-
-	var sum float32
-	for i := 0; i < len(ref_fft); i++ {
-		// calculate magnitude, don't care about phase
-		diff := math.Hypot(real(ref_fft[i]), imag(ref_fft[i])) -
-			math.Hypot(real(device_fft[i]), imag(device_fft[i]))
-		sum += float32(diff) * float32(diff)
-	}
-	return -math.Sqrt(float64(sum))
-}
-
-func native_mfcc_euclidean_mono(ref_frames, device_frames []float32, sample_rate int) (score float64, filtered bool) {
-	ref_mono, ref_max := sum_channels_and_normalize(ref_frames)
-	log.Println("ref_max", ref_max)
-	device_mono, device_max := sum_channels_and_normalize(device_frames)
-	log.Println("device_max", device_max)
-	// if device_max < 0.1 {
-	// 	log.Println("not enough signal in device frames, filtering")
-	// 	return -math.MaxFloat64, true
-	// }
-
-	var ref_samples, device_samples mfcc.SliceSource
-	ref_samples.Slice = ref_mono
-	device_samples.Slice = device_mono
-
-	options := &mfcc.Options{MelCount: 13, LowFreq: 133.33}
-
-	ref_mfccs := mfcc.MFCC(&ref_samples, sample_rate, options)
-	device_mfccs := mfcc.MFCC(&device_samples, sample_rate, options)
-	// discard first set of coeffs
-	ref_mfccs.NextCoeffs()
-	device_mfccs.NextCoeffs()
-	var sum float64
-	for {
-		ref_coeffs, err := ref_mfccs.NextCoeffs()
-		if err != nil {
-			log.Println("error in computing reference mfccs: ", err)
-			break
-		}
-		device_coeffs, err := device_mfccs.NextCoeffs()
-		if err != nil {
-			log.Println("error in computing device mfccs: ", err)
-			break
-		}
-
-		for i := range ref_coeffs {
-			diff := ref_coeffs[i] - device_coeffs[i]
-			sum += diff * diff
-		}
-	}
-
-	return -math.Sqrt(sum), false
-}
-
-func native_mfcc_cosine_mono(ref_frames, device_frames []float32, sample_rate int) (score float64, filtered bool) {
-	ref_mono := sum_channels(ref_frames)
-	device_mono := sum_channels(device_frames)
-
-	var ref_samples, device_samples mfcc.SliceSource
-	ref_samples.Slice = ref_mono
-	device_samples.Slice = device_mono
-
-	ref_options := &mfcc.Options{MelCount: 13, LowFreq: 133.33, Window: time.Duration(float32(len(ref_mono)) / float32(sample_rate) * float32(time.Second))}
-	device_options := &mfcc.Options{MelCount: 13, LowFreq: 133.33, Window: time.Duration(float32(len(device_mono)) / float32(sample_rate) * float32(time.Second))}
-
-	ref_mfccs := mfcc.MFCC(&ref_samples, sample_rate, ref_options)
-	device_mfccs := mfcc.MFCC(&device_samples, sample_rate, device_options)
-	ref_coeffs, ref_err := ref_mfccs.NextCoeffs()
-	device_coeffs, device_err := device_mfccs.NextCoeffs()
-
-	if ref_err != nil {
-		fmt.Println("error computing mfccs for reference recording", ref_err)
-	}
-	if device_err != nil {
-		fmt.Println("error computing mfccs for device recording", device_err)
-	}
-
-	// after https://reference.wolfram.com/language/ref/CosineDistance.html
-	var numerator float64
-	for i, r := range ref_coeffs {
-		numerator = numerator + r*device_coeffs[i]
-	}
-
-	var denominator_factors = make([]float64, 2)
-	for i := range ref_coeffs {
-		denominator_factors[0] = denominator_factors[0] + math.Pow(ref_coeffs[i], 2)
-		denominator_factors[1] = denominator_factors[1] + math.Pow(device_coeffs[i], 2)
-	}
-	var denominator = math.Sqrt(denominator_factors[0]) * math.Sqrt(denominator_factors[1])
-
-	return 1 - (numerator / denominator), false
-}
-
-func sum_channels(in []float32) []float64 {
-	out := make([]float64, len(in)/2)
-	for i, r := range in {
-		out[i/2] += float64(r)
-	}
-	return out
-}
-
-func sum_channels_and_normalize(in []float32) ([]float64, float64) {
-	out := sum_channels(in)
-	var max float64
-	for _, r := range out {
-		if math.Abs(r) > max {
-			max = math.Abs(r)
-		}
-	}
-	for i := range out {
-		out[i] = out[i] / max
-	}
-	return out, max
-}

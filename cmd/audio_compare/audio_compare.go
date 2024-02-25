@@ -3,51 +3,12 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
 	"math"
 	"os"
 
+	"github.com/mkb218/fevolver/audio"
 	"github.com/mkb218/gosndfile/sndfile"
-	"github.com/unixpickle/speechrecog/mfcc"
 )
-
-func native_mfcc_euclidean_mono(ref_frames, device_frames []float32, sample_rate int) (score float64) {
-	ref_mono := sum_channels_and_normalize(ref_frames)
-	device_mono := sum_channels_and_normalize(device_frames)
-
-	var ref_samples, device_samples mfcc.SliceSource
-	ref_samples.Slice = ref_mono
-	device_samples.Slice = device_mono
-
-	options := &mfcc.Options{}
-
-	ref_mfccs := mfcc.MFCC(&ref_samples, sample_rate, options)
-	device_mfccs := mfcc.MFCC(&device_samples, sample_rate, options)
-
-	var sum float64
-	var i int
-	for {
-		log.Printf("round %d", i)
-		i++
-		ref_coeffs, err := ref_mfccs.NextCoeffs()
-		if err != nil {
-			log.Println("error in computing reference mfccs: ", err)
-			break
-		}
-		device_coeffs, err := device_mfccs.NextCoeffs()
-		if err != nil {
-			log.Println("error in computing device mfccs: ", err)
-			break
-		}
-
-		for i := range ref_coeffs {
-			diff := ref_coeffs[i] - device_coeffs[i]
-			sum += diff * diff
-		}
-	}
-
-	return -math.Sqrt(sum)
-}
 
 func sum_channels(in []float32) []float64 {
 	out := make([]float64, len(in)/2)
@@ -115,5 +76,6 @@ func main() {
 		fmt.Println("couldn't read from file_b: ", err)
 		os.Exit(1)
 	}
-	fmt.Println("distance: ", native_mfcc_euclidean_mono(frames_a, frames_b, int(sndinfo.Samplerate)))
+	score, _ := audio.Native_mfcc_dtw_euclidean_mono(frames_a, frames_b, int(sndinfo.Samplerate))
+	fmt.Println("score: ", score)
 }
